@@ -1,0 +1,14 @@
+{
+  "name": "想你 · 情侣小屋",
+  "short_name": "想你",
+  "description": "两个人的小软件:每日想念、留言墙、想念日历、纪念日",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff5f8",
+  "theme_color": "#ff6b8a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

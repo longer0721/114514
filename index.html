@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>想你 · 每日想念</title>
+<!-- PWA:手机 Chrome“安装应用/添加到主屏幕”后像原生 App 一样运行 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff6b8a">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- 实时通道(由 node server.js 提供);用 file:// 打开时加载失败也不影响静态演示 -->
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  :root {
+    --pink: #ff6b8a;
+    --pink-deep: #ff4d6d;
+    --pink-light: #ffe3ea;
+    --cream: #fff5f7;
+    --text: #4a3f45;
+    --text-light: #a58e99;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(160deg, #ffe7ee 0%, #fff5f7 40%, #ffeaf1 100%);
+    min-height: 100vh;
+    color: var(--text);
+    overflow-x: hidden;
+  }
+  .bg-hearts { position:fixed; inset:0; pointer-events:none; z-index:0; }
+  .bg-hearts span {
+    position:absolute; bottom:-20px; font-size:18px; color:#ffb3c6;
+    animation: floatUp linear infinite; opacity:.5;
+  }
+  @keyframes floatUp {
+    0% { transform: translateY(0) rotate(0deg); opacity:0; }
+    10% { opacity:.6; }
+    100% { transform: translateY(-110vh) rotate(30deg); opacity:0; }
+  }
+  .app { position:relative; z-index:1; max-width:480px; margin:0 auto; padding:24px 20px 40px; }
+
+  /* ===== 顶部 ===== */
+  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .header .title { font-size:24px; font-weight:800; letter-spacing:1px; }
+  .header .title span { color: var(--pink-deep); }
+  .header .user { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+  .header .user:active .avatar { transform: scale(.92); }
+  .avatar {
+    width:36px; height:36px; border-radius:50%;
+    background: linear-gradient(135deg, #ff8fab, #ff4d6d);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:700; font-size:14px;
+    box-shadow: 0 3px 8px rgba(255,77,109,.3);
+    transition: transform .15s;
+  }
+  .avatar .emoji { font-size:20px; line-height:1; }
+  .header .user span { font-size:13px; color:var(--text-light); }
+
+  /* ===== 日期卡 ===== */
+  .date-card {
+    background:#fff; border-radius:20px; padding:16px 18px;
+    display:flex; justify-content:space-between; align-items:center;
+    box-shadow: 0 8px 24px rgba(255,107,138,.12);
+    margin-bottom:18px; border:1px solid rgba(255,107,138,.12);
+  }
+  .date-card .day { font-size:15px; font-weight:600; }
+  .date-card .count {
+    font-size:13px; color:var(--text-light);
+    background:var(--pink-light); padding:6px 12px; border-radius:20px;
+    display:flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .date-card .count b { color:var(--pink-deep); font-size:15px; }
+  .edit-date {
+    border:none; background:transparent; cursor:pointer; font-size:13px;
+    padding:2px; border-radius:8px; transition: transform .15s;
+  }
+  .edit-date:hover { transform: scale(1.2); }
+
+  /* ===== 纪念日里程碑/庆祝条 ===== */
+  .milestone {
+    background: linear-gradient(135deg, #fff0f4, #ffe3ea);
+    border: 1px solid rgba(255,107,138,.25);
+    border-radius: 14px; padding: 10px 14px; font-size: 13px; color: var(--pink-deep);
+    text-align: center; font-weight: 600; margin-bottom: 18px;
+    box-shadow: 0 4px 12px rgba(255,107,138,.1);
+  }
+  .milestone b { font-size: 15px; }
+
+  /* ===== 想念主卡 ===== */
+  .miss-card {
+    background:#fff; border-radius:28px; padding:28px 22px 24px;
+    box-shadow: 0 12px 32px rgba(255,107,138,.16);
+    border:1px solid rgba(255,107,138,.12);
+    position:relative; overflow:hidden; margin-bottom:18px;
+  }
+  .miss-card::before {
+    content:""; position:absolute; top:-60px; right:-60px; width:140px; height:140px;
+    background: radial-gradient(circle, rgba(255,107,138,.08), transparent 70%);
+    border-radius:50%;
+  }
+  .miss-card .label {
+    font-size:15px; color:var(--text-light); margin-bottom:6px; text-align:center;
+  }
+  .miss-card .emoji-big {
+    text-align:center; font-size:56px; margin:6px 0 2px;
+    animation: heartbeat 1.6s ease-in-out infinite;
+  }
+  @keyframes heartbeat {
+    0%,100% { transform: scale(1); }
+    25% { transform: scale(1.12); }
+    40% { transform: scale(1); }
+    60% { transform: scale(1.08); }
+  }
+  .miss-card .value {
+    text-align:center; font-size:44px; font-weight:900; color:var(--pink-deep);
+    letter-spacing:-1px;
+  }
+  .miss-card .value small { font-size:20px; font-weight:600; color:var(--pink); }
+  .miss-card .tagline {
+    text-align:center; font-size:13px; margin-top:6px; color:var(--text-light);
+    min-height:20px;
+  }
+
+  /* 滑块 */
+  .slider-wrap { margin:20px 0 4px; }
+  .heart-scale { display:flex; justify-content:space-between; font-size:16px; margin-bottom:6px; opacity:.6; }
+  input[type=range] {
+    -webkit-appearance:none; appearance:none; width:100%; height:8px;
+    border-radius:8px; background: linear-gradient(90deg, #ffd6e0, #ff6b8a 50%, #ff4d6d);
+    outline:none; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none; width:26px; height:26px; border-radius:50%;
+    background:#fff; border:4px solid var(--pink-deep);
+    box-shadow: 0 4px 12px rgba(255,77,109,.4);
+  }
+  input[type=range]::-moz-range-thumb {
+    width:22px; height:22px; border-radius:50%; background:#fff; border:4px solid var(--pink-deep);
+  }
+  .range-val {
+    text-align:right; font-size:13px; color:var(--pink-deep); font-weight:700; margin-top:4px;
+  }
+
+  /* 提交按钮 */
+  .btn {
+    width:100%; padding:15px; border:none; border-radius:16px;
+    background: linear-gradient(135deg, #ff6b8a, #ff4d6d);
+    color:#fff; font-size:17px; font-weight:700; letter-spacing:2px;
+    box-shadow: 0 8px 20px rgba(255,77,109,.35);
+    cursor:pointer; transition: transform .15s, box-shadow .15s;
+    margin-top:16px;
+  }
+  .btn:active { transform: scale(.97); box-shadow: 0 4px 12px rgba(255,77,109,.3); }
+  .btn.submitted { background:#b8b0b5; box-shadow:none; }
+
+  /* ===== 漂浮爱心动画 ===== */
+  #burst { position:fixed; inset:0; pointer-events:none; z-index:5; }
+  #burst i {
+    position:absolute; font-style:normal; animation: pop 1s ease-out forwards;
+  }
+  @keyframes pop {
+    0% { transform: translate(-50%,-50%) scale(0); opacity:1; }
+    70% { transform: translate(-50%,-120%) scale(1.4); opacity:.9; }
+    100% { transform: translate(-50%,-200%) scale(.6); opacity:0; }
+  }
+  @keyframes fall {
+    0% { transform: translateY(-10vh) rotate(0deg); opacity:1; }
+    100% { transform: translateY(110vh) rotate(360deg); opacity:.5; }
+  }
+  #burst i.falling { top:0; animation: fall 2.2s ease-in forwards; }
+
+  /* ===== 头像选择 ===== */
+  .avatar-grid {
+    display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-top:14px;
+  }
+  .avatar-grid .av {
+    aspect-ratio:1; border-radius:12px; background:var(--cream);
+    border:2px solid transparent; font-size:24px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: transform .12s, border-color .12s;
+  }
+  .avatar-grid .av:active { transform: scale(.9); }
+  .avatar-grid .av.sel { border-color:var(--pink); background:var(--pink-light); }
+  .profile-err { font-size:12px; color:#e5484d; margin-top:10px; min-height:16px; font-weight:600; }
+  #profileName {
+    width:100%; margin-top:14px; border:2px solid var(--pink-light); border-radius:14px;
+    padding:11px 12px; font-size:16px; text-align:center; font-weight:700;
+    color:var(--pink-deep); outline:none; background:var(--cream); font-family:inherit;
+  }
+  #profileName:focus { border-color:var(--pink); }
+
+  /* ===== 对方想念(绑定后) ===== */
+  .partner-card {
+    background:#fff; border-radius:24px; padding:20px;
+    box-shadow: 0 8px 24px rgba(255,107,138,.12);
+    border:1px solid rgba(255,107,138,.12);
+  }
+  .partner-card .head {
+    display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  }
+  .partner-card .head .p-avatar {
+    width:40px; height:40px; border-radius:50%;
+    background: linear-gradient(135deg, #a58ee8, #6f5bd0);
+    display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700;
+  }
+  .partner-card .head .p-name { font-weight:700; font-size:15px; }
+  .partner-card .head .p-name .dot { font-size:13px; margin-left:2px; }
+  .partner-card .head .p-status { font-size:12px; color:var(--text-light); }
+  .partner-progress { margin-top:8px; }
+  .partner-bar {
+    height:10px; border-radius:10px; background:var(--pink-light); overflow:hidden;
+  }
+  .partner-bar i {
+    display:block; height:100%; width:0; border-radius:10px;
+    background: linear-gradient(90deg, #a58ee8, #6f5bd0);
+    transition: width .8s ease;
+  }
+  .partner-line { display:flex; justify-content:space-between; font-size:12px; color:var(--text-light); margin-top:6px; }
+  .partner-line b { color:#6f5bd0; }
+
+  /* 未绑定提示 */
+  .bind-hint { text-align:center; padding:4px 0 2px; color:var(--text-light); font-size:13px; }
+  .bind-box { text-align:center; }
+  .phone-hint {
+    margin:18px auto 6px; max-width:520px; text-align:center;
+    font-size:12px; color:#b1818f; background:#fff0f4; border:1px dashed #ffc2d1;
+    border-radius:12px; padding:8px 12px; line-height:1.7;
+  }
+  .phone-hint b { color:#ff4d6d; word-break:break-all; }
+  .offline-banner {
+    position:sticky; top:0; z-index:50; display:none;
+    background:#fff0f4; color:#e0527a; border-bottom:1px solid #ffd3de;
+    text-align:center; font-size:12.5px; padding:6px 10px; line-height:1.6;
+  }
+  .offline-banner .ob-dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:#ff8fab; margin-right:6px; vertical-align:1px; animation:obPulse 1.4s infinite; }
+  @keyframes obPulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+  .create-btn {
+    margin-top:12px; padding:13px; font-size:15px;
+    background:linear-gradient(135deg,#ff8fab,#ff6b8a);
+  }
+  .join-row { display:flex; gap:8px; margin-top:10px; }
+  #codeInput {
+    flex:1; min-width:0; border:2px solid var(--pink-light); border-radius:12px;
+    padding:11px 12px; font-size:16px; text-align:center; letter-spacing:5px;
+    font-weight:700; color:var(--pink-deep); outline:none; background:var(--cream);
+    font-family:inherit;
+  }
+  #codeInput:focus { border-color:var(--pink); }
+  .join-btn {
+    padding:11px 20px; border-radius:12px; font-size:14px; letter-spacing:1px;
+    background:linear-gradient(135deg,#a58ee8,#6f5bd0);
+    box-shadow: 0 5px 14px rgba(111,91,208,.3);
+  }
+  .code-display { margin-top:14px; }
+  .code-display .code-label { font-size:13px; color:var(--text-light); }
+  .code-display .code {
+    font-size:30px; font-weight:900; letter-spacing:10px; color:var(--pink-deep);
+    background:var(--pink-light); padding:12px 16px; border-radius:14px;
+    display:inline-block; margin-top:6px;
+  }
+  .code-display .waiting {
+    font-size:12px; color:var(--pink-deep); margin-top:10px; font-weight:600;
+  }
+  .bind-err { font-size:12px; color:#e5484d; margin-top:10px; min-height:16px; font-weight:600; }
+
+  /* ===== 想念日历 ===== */
+  .cal-card {
+    background:#fff; border-radius:24px; padding:20px;
+    box-shadow: 0 8px 24px rgba(255,107,138,.12);
+    border:1px solid rgba(255,107,138,.12); margin-top:18px;
+  }
+  .cal-card .cal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .cal-card .cal-title { font-weight:800; font-size:16px; }
+  .cal-card .cal-nav { display:flex; align-items:center; gap:8px; }
+  .cal-card .cal-nav-btn {
+    border:none; background:var(--pink-light); color:var(--pink-deep);
+    width:26px; height:26px; border-radius:8px; font-size:16px; cursor:pointer; line-height:1;
+  }
+  .cal-card .cal-nav-btn:active { transform: scale(.92); }
+  .cal-card .cal-month { font-size:13px; font-weight:700; color:var(--pink-deep); min-width:78px; text-align:center; }
+  .cal-week { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:6px; }
+  .cal-week span { text-align:center; font-size:11px; color:var(--text-light); }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .cal-cell {
+    aspect-ratio: 1/0.9; border-radius:10px; background:#fdf3f6;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    position:relative; min-height:52px;
+  }
+  .cal-cell.today { outline:2px solid var(--pink); outline-offset:-1px; background:#ffeef3; }
+  .cal-cell.has { background:var(--pink-light); }
+  .cal-cell.has.mineonly { background:#ffe3ec; }
+  .cal-num { font-size:12px; font-weight:700; color:var(--text-light); }
+  .cal-cell.has .cal-num { color:var(--pink-deep); }
+  .cal-cell.today .cal-num { color:var(--pink-deep); font-size:13px; }
+  .cal-bars { display:flex; flex-direction:column; gap:2px; width:70%; }
+  .cal-bars i { display:block; height:4px; border-radius:4px; background:var(--pink); }
+  .cal-bars i.b-me { background:linear-gradient(90deg,#ff8fab,#ff4d6d); }
+  .cal-bars i.b-ta { background:linear-gradient(90deg,#a58ee8,#6f5bd0); }
+  .cal-legend { margin-top:10px; font-size:11px; color:var(--text-light); display:flex; align-items:center; gap:6px; }
+  .cal-legend .lg { display:inline-block; width:14px; height:6px; border-radius:3px; }
+  .cal-legend .lg-me { background:linear-gradient(90deg,#ff8fab,#ff4d6d); }
+  .cal-legend .lg-ta { background:linear-gradient(90deg,#a58ee8,#6f5bd0); }
+  .cal-legend .lg-tip { margin-left:auto; opacity:.8; }
+  .cal-cell.cal-empty { background:transparent; }
+
+  /* ===== 留言墙 ===== */
+  .leave-card {
+    background:#fff; border-radius:24px; padding:20px;
+    box-shadow: 0 8px 24px rgba(255,107,138,.12);
+    border:1px solid rgba(255,107,138,.12);
+    margin-top:18px;
+  }
+  .leave-head { font-weight:800; font-size:16px; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+  .leave-head::after {
+    content:""; flex:1; height:1px; background:linear-gradient(90deg, var(--pink-light), transparent);
+  }
+  textarea#leaveInput {
+    width:100%; border:2px solid var(--pink-light); border-radius:14px; padding:12px;
+    font-size:14px; line-height:1.6; resize:none; height:66px; outline:none;
+    background:var(--cream); color:var(--text); font-family:inherit;
+    transition: border-color .2s;
+  }
+  textarea#leaveInput:focus { border-color:var(--pink); }
+  textarea#leaveInput::placeholder { color:#c9b6bf; }
+  .btn.leave-btn {
+    margin-top:10px; padding:11px; font-size:14px; letter-spacing:1px;
+    background:linear-gradient(135deg,#ff8fab,#ff6b8a);
+    box-shadow: 0 5px 14px rgba(255,107,138,.28);
+  }
+  .leave-list { margin-top:16px; display:flex; flex-direction:column; gap:12px; }
+  .leave-msg { display:flex; gap:8px; align-items:flex-start; }
+  .leave-msg.me { flex-direction:row-reverse; }
+  .leave-msg .mini-avatar {
+    width:32px; height:32px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-size:12px; font-weight:700;
+  }
+  .mini-avatar .emoji { font-size:16px; line-height:1; }
+  .p-avatar .emoji { font-size:22px; line-height:1; }
+  .leave-msg.me .mini-avatar { background:linear-gradient(135deg,#ff8fab,#ff4d6d); }
+  .leave-msg.ta .mini-avatar { background:linear-gradient(135deg,#a58ee8,#6f5bd0); }
+  .leave-msg .bubble {
+    max-width:76%; padding:9px 13px; border-radius:16px; font-size:14px; line-height:1.55;
+    background:#f1ecff; color:var(--text); position:relative;
+  }
+  .leave-msg.me .bubble {
+    background:linear-gradient(135deg,#ff8fab,#ff6b8a); color:#fff;
+    border-bottom-right-radius:4px;
+  }
+  .leave-msg.ta .bubble { border-bottom-left-radius:4px; background:#f3eef7; }
+  .leave-msg .bubble .t {
+    display:block; font-size:11px; opacity:.72; margin-top:5px; font-weight:400;
+  }
+  .leave-msg.me .bubble .t { opacity:.85; }
+  .leave-empty {
+    text-align:center; color:var(--text-light); font-size:13px; padding:14px 0 6px;
+  }
+  .leave-empty span { font-size:22px; display:block; margin-bottom:4px; }
+
+  /* 弹窗 */
+  .modal-mask {
+    position:fixed; inset:0; background:rgba(74,63,69,.45); z-index:10;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-mask.show { display:flex; }
+  .modal {
+    background:#fff; border-radius:24px; padding:28px 22px; width:100%; max-width:340px;
+    text-align:center; animation: slideUp .3s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(30px); opacity:0; } to { transform: none; opacity:1; } }
+  .modal .m-emoji { font-size:48px; margin-bottom:10px; }
+  .modal h3 { font-size:20px; font-weight:800; margin-bottom:10px; }
+  .modal p { font-size:14px; color:var(--text-light); line-height:1.7; }
+  .modal input[type=date] {
+    width:100%; margin-top:14px; padding:12px; border:2px solid var(--pink-light);
+    border-radius:14px; font-size:16px; text-align:center; color:var(--pink-deep);
+    font-weight:700; outline:none; background:var(--cream); font-family:inherit;
+  }
+  .modal input[type=date]:focus { border-color:var(--pink); }
+  .modal .m-btn {
+    margin-top:20px; padding:13px; width:100%; border:none; border-radius:14px;
+    background:linear-gradient(135deg,#ff6b8a,#ff4d6d); color:#fff; font-size:15px; font-weight:700;
+    cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div id="offlineBanner" class="offline-banner"><span class="ob-dot"></span>离线中 · 内容存在本机，联网后自动同步</div>
+
+<div class="bg-hearts" id="bgHearts"></div>
+<div id="burst"></div>
+
+<div class="app">
+  <!-- 顶部 -->
+  <div class="header">
+    <div class="title">❤ 想你<span>.</span></div>
+    <div class="user" id="profileBtn" title="点我改昵称/头像">
+      <span id="todayLabel">今天</span>
+      <div class="avatar" id="myAvatar">我</div>
+    </div>
+  </div>
+
+  <!-- 日期卡 -->
+  <div class="date-card">
+    <div class="day" id="dateText">...</div>
+    <div class="count">在一起 <b id="daysTogether">--</b> 天
+      <button class="edit-date" id="editDateBtn" style="display:none" title="设置在一起的日子">✏️</button>
+    </div>
+  </div>
+
+  <!-- 纪念日里程碑/庆祝条 -->
+  <div class="milestone" id="milestone" style="display:none"></div>
+
+  <!-- 想念主卡 -->
+  <div class="miss-card">
+    <div class="label">今天有多想 TA？</div>
+    <div class="emoji-big" id="bigEmoji">🥰</div>
+    <div class="value" id="missValue">0<small>%</small></div>
+    <div class="tagline" id="missTagline">点一下下面的爱心，告诉我你的想念</div>
+
+    <div class="slider-wrap">
+      <div class="heart-scale">🖤&nbsp;&nbsp;&nbsp;&nbsp;💗&nbsp;&nbsp;&nbsp;&nbsp;💖&nbsp;&nbsp;&nbsp;&nbsp;❤️</div>
+      <input type="range" id="missSlider" min="0" max="100" value="0">
+      <div class="range-val" id="rangeVal">想念值 0 / 100</div>
+    </div>
+
+    <button class="btn" id="submitBtn">把想念告诉 TA 💌</button>
+  </div>
+
+  <!-- 对方想念 -->
+  <div class="partner-card">
+    <div class="head">
+      <div class="p-avatar" id="pAvatar">TA</div>
+      <div>
+        <div class="p-name"><span id="pName">TA 今天</span> <span class="dot" id="pDot">⚪</span></div>
+        <div class="p-status" id="pStatus">还没有绑定，看不到 TA 的想念</div>
+      </div>
+    </div>
+    <div class="partner-progress">
+      <div class="partner-bar"><i id="pBar"></i></div>
+      <div class="partner-line">
+        <span>TA 的想念</span>
+        <span><b id="pVal">0%</b></span>
+      </div>
+    </div>
+    <div class="bind-box" id="bindBox">
+      <div class="bind-hint" id="bindHint">绑定你的另一半后，就能看到 TA 的想念👇</div>
+      <button class="btn create-btn" id="createBtn">🔑 生成邀请码</button>
+      <div class="join-row">
+        <input id="codeInput" maxlength="6" inputmode="numeric" placeholder="输入 6 位邀请码">
+        <button class="btn join-btn" id="joinBtn">加入</button>
+      </div>
+      <div class="code-display" id="codeDisplay" style="display:none">
+        <div class="code-label">把邀请码发给 TA，等 TA 加入</div>
+        <div class="code" id="myCode"></div>
+        <div class="waiting" id="waitingText">⏳ 等待 TA 加入…</div>
+      </div>
+      <div class="bind-err" id="bindErr"></div>
+    </div>
+  </div>
+
+  <!-- 日历卡 -->
+  <div class="cal-card">
+    <div class="cal-head">
+      <span class="cal-title">💗 想念日历</span>
+      <div class="cal-nav">
+        <button class="cal-nav-btn" id="calPrev">‹</button>
+        <span class="cal-month" id="calMonth"></span>
+        <button class="cal-nav-btn" id="calNext">›</button>
+      </div>
+    </div>
+    <div class="cal-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-legend"><span class="lg lg-me"></span>我的 <span class="lg lg-ta"></span>TA 的 <span class="lg-tip">(条越长越想念)</span></div>
+  </div>
+
+  <!-- 留言墙 -->
+  <div class="leave-card">
+    <div class="leave-head">📝 今天的悄悄话</div>
+    <textarea id="leaveInput" maxlength="120" placeholder="把想说的话留在这里，TA 打开就能看到…"></textarea>
+    <button class="btn leave-btn" id="leaveBtn">留下这句话 💬</button>
+    <div class="leave-list" id="leaveList"></div>
+  </div>
+</div>
+
+<!-- 提交成功弹窗 -->
+<div class="modal-mask" id="modal">
+  <div class="modal">
+    <div class="m-emoji" id="mEmoji">🥰</div>
+    <h3 id="mTitle">已告诉 TA</h3>
+    <p id="mText">你今天想念 TA 的程度是 ...</p>
+    <button class="m-btn" onclick="closeModal()">好 ~</button>
+  </div>
+</div>
+
+<!-- 在一起纪念日弹窗 -->
+<div class="modal-mask" id="dateModal">
+  <div class="modal">
+    <div class="m-emoji">💐</div>
+    <h3>我们在一起的日子</h3>
+    <p>选一个日期，这里会显示你们在一起多少天</p>
+    <input type="date" id="sinceInput">
+    <button class="m-btn" id="sinceSaveBtn">保存 💗</button>
+  </div>
+</div>
+
+<!-- 昵称/头像弹窗 -->
+<div class="modal-mask" id="profileModal">
+  <div class="modal">
+    <div class="m-emoji" id="profileEmoji">🐰</div>
+    <h3>我的昵称 &amp; 头像</h3>
+    <p>TA 那边会实时看到你的新名字和新头像</p>
+    <input id="profileName" maxlength="12" placeholder="输入你的昵称">
+    <div class="avatar-grid" id="avatarGrid"></div>
+    <div class="profile-err" id="profileErr"></div>
+    <button class="m-btn" id="profileSaveBtn">保存 ✨</button>
+  </div>
+</div>
+
+<script>
+// ================= 状态 =================
+const state = {
+  myName: '我',
+  partnerName: 'TA',
+  myAvatar: '',         // emoji 头像('' = 用名字首字)
+  partnerAvatar: '',
+  miss: 0,              // 我今天的想念值
+  partnerMiss: null,    // TA 的想念值（null = 未提交/未绑定）
+  bound: false,         // 是否已绑定
+  daysTogether: 0,
+  sinceDate: null,      // 在一起的日子 'YYYY-MM-DD'（存房间，两端同步）
+  misses: {},           // 全部历史想念 {'YYYY-MM-DD': {name: value}}（日历用）
+  enabled: false,       // 今天是否还能提交
+  leaves: [],           // 留言 [{from:'me'|'ta', text, time}]
+  code: null,           // 我所在房间的邀请码
+};
+
+// 设备身份(持久化用)：localStorage 存一份，重开自动回到原房间
+const CLIENT_ID = (() => {
+  try {
+    let id = localStorage.getItem('couple_client');
+    if (!id) {
+      id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem('couple_client', id);
+    }
+    return id;
+  } catch (e) { return 'c' + Date.now().toString(36); }
+})();
+
+// ================= 离线缓存 =================
+// 在线写服务器（实时同步）；离线写本地，重启/断网都能看，联网后自动补同步
+const OFFLINE_KEY = 'couple_offline_v1';
+const PENDING_KEY = 'couple_pending_v1';
+let online = false; // 已连上服务器
+let offlinePending = { misses: {}, leaves: [], since: null, profile: null };
+
+function offSave() {
+  try {
+    localStorage.setItem(OFFLINE_KEY, JSON.stringify({
+      code: state.code, myName: state.myName, partnerName: state.partnerName,
+      myAvatar: state.myAvatar, partnerAvatar: state.partnerAvatar,
+      sinceDate: state.sinceDate, misses: state.misses, leaves: state.leaves,
+      miss: state.miss, partnerMiss: state.partnerMiss, bound: state.bound
+    }));
+  } catch (e) {}
+}
+function offLoad() {
+  try { return JSON.parse(localStorage.getItem(OFFLINE_KEY)); } catch (e) { return null; }
+}
+function savePending() {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify(offlinePending)); } catch (e) {}
+}
+function loadPending() {
+  try {
+    offlinePending = JSON.parse(localStorage.getItem(PENDING_KEY)) ||
+      { misses: {}, leaves: [], since: null, profile: null };
+  } catch (e) {
+    offlinePending = { misses: {}, leaves: [], since: null, profile: null };
+  }
+}
+function showBanner() {
+  const b = document.getElementById('offlineBanner');
+  if (b) b.style.display = 'block';
+}
+function hideBanner() {
+  const b = document.getElementById('offlineBanner');
+  if (b) b.style.display = 'none';
+}
+
+// 联网后把离线期间写的内容补推给服务器（miss 幂等；leave 带 ts 服务器去重）
+function flushPending() {
+  const p = offlinePending;
+  if (p.since) { socket.emit('setSince', { date: p.since }); p.since = null; }
+  if (p.profile) { socket.emit('setProfile', { name: p.profile.name, avatar: p.profile.avatar }); p.profile = null; }
+  // 把离线写的想念值合并回本地日历（服务器数据为底，本地离线值补上）
+  Object.keys(p.misses || {}).forEach(dk => {
+    if (!state.misses[dk]) state.misses[dk] = {};
+    Object.keys(p.misses[dk] || {}).forEach(nm => {
+      state.misses[dk][nm] = p.misses[dk][nm];
+      socket.emit('miss', { value: p.misses[dk][nm] });
+    });
+  });
+  p.misses = {};
+  // 离线留言合并回本地列表，并推给服务器
+  if (p.leaves.length) {
+    const have = new Set(state.leaves.filter(l => l.ts).map(l => String(l.ts)));
+    p.leaves.forEach(l => {
+      if (!have.has(String(l.ts))) state.leaves.push({ from: 'me', text: l.text, time: l.time, ts: l.ts });
+      socket.emit('leave', { text: l.text, time: l.time, ts: l.ts });
+    });
+    renderLeaves();
+  }
+  p.leaves = [];
+  savePending();
+}
+
+function frontTodayKey() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+// ================= 在一起天数 =================
+// dateStr 'YYYY-MM-DD' → 当天算第 1 天
+function calcDays(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return null;
+  const start = new Date(parts[0], parts[1] - 1, parts[2]);
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - start.getTime()) / 86400000);
+  return diff + 1;
+}
+
+function renderDays() {
+  const el = document.getElementById('daysTogether');
+  const days = calcDays(state.sinceDate);
+  el.textContent = days !== null ? days : '--';
+  renderMilestone();
+}
+
+// ================= 头像 =================
+// emoji 头像放大显示，否则用名字首字
+function applyAvatar(el, name, avatarEmoji) {
+  if (!el) return;
+  if (avatarEmoji) {
+    el.innerHTML = '<span class="emoji">' + avatarEmoji + '</span>';
+  } else {
+    el.textContent = (name && name[0]) || '?';
+  }
+}
+
+// ================= 工具 =================
+const slider = document.getElementById('missSlider');
+const rangeVal = document.getElementById('rangeVal');
+const missValue = document.getElementById('missValue');
+const bigEmoji = document.getElementById('bigEmoji');
+const tagline = document.getElementById('missTagline');
+const submitBtn = document.getElementById('submitBtn');
+const pBar = document.getElementById('pBar');
+const pVal = document.getElementById('pVal');
+const pStatus = document.getElementById('pStatus');
+const bindBox = document.getElementById('bindBox');
+const createBtn = document.getElementById('createBtn');
+const joinBtn = document.getElementById('joinBtn');
+const codeInput = document.getElementById('codeInput');
+const codeDisplay = document.getElementById('codeDisplay');
+const myCodeEl = document.getElementById('myCode');
+const waitingText = document.getElementById('waitingText');
+const bindErr = document.getElementById('bindErr');
+const editDateBtn = document.getElementById('editDateBtn');
+const dateModal = document.getElementById('dateModal');
+const sinceInput = document.getElementById('sinceInput');
+const sinceSaveBtn = document.getElementById('sinceSaveBtn');
+
+// ================= 昵称 / 头像 =================
+const AVATARS = ['🐰','🐻','🐱','🐶','🦊','🐼','🐨','🦁','🐯','🐹','🐸','🐧','🐤','🦄','🐳','🌸','🍓','🌙','⭐','💖','😎','🥰'];
+let selectedAvatar = '';
+const profileModal = document.getElementById('profileModal');
+const profileEmoji = document.getElementById('profileEmoji');
+const profileNameInput = document.getElementById('profileName');
+const avatarGrid = document.getElementById('avatarGrid');
+const profileErr = document.getElementById('profileErr');
+const profileSaveBtn = document.getElementById('profileSaveBtn');
+
+// 填充头像格子
+AVATARS.forEach(a => {
+  const b = document.createElement('button');
+  b.className = 'av';
+  b.type = 'button';
+  b.textContent = a;
+  b.addEventListener('click', () => {
+    selectedAvatar = a;
+    profileEmoji.textContent = a;
+    avatarGrid.querySelectorAll('.av').forEach(x => x.classList.remove('sel'));
+    b.classList.add('sel');
+  });
+  avatarGrid.appendChild(b);
+});
+
+document.getElementById('profileBtn').addEventListener('click', () => {
+  profileNameInput.value = state.myName;
+  selectedAvatar = state.myAvatar || '';
+  profileEmoji.textContent = selectedAvatar || '🐰';
+  profileErr.textContent = '';
+  avatarGrid.querySelectorAll('.av').forEach(x => x.classList.toggle('sel', x.textContent === selectedAvatar));
+  profileModal.classList.add('show');
+});
+profileSaveBtn.addEventListener('click', () => {
+  const name = profileNameInput.value.trim().slice(0, 12) || state.myName;
+  const avatar = selectedAvatar;
+  if (!socket || !socket.connected) {
+    // 离线:本地直接改，记进待同步队列，联网后自动补推
+    state.myName = name;
+    state.myAvatar = avatar;
+    applyAvatar(document.getElementById('myAvatar'), name, avatar);
+    offlinePending.profile = { name: name, avatar: avatar };
+    savePending();
+    offSave();
+    profileModal.classList.remove('show');
+    return;
+  }
+  profileErr.textContent = '';
+  profileSaveBtn.disabled = true;
+  profileSaveBtn.textContent = '保存中…';
+  socket.emit('setProfile', { name, avatar });
+});
+
+// 打开/保存纪念日弹窗
+editDateBtn.addEventListener('click', () => {
+  sinceInput.value = state.sinceDate || '2026-05-20'; // 还没有设置时默认今年 5 月 20 日
+  dateModal.classList.add('show');
+});
+sinceSaveBtn.addEventListener('click', () => {
+  const val = sinceInput.value;
+  if (!val) return;
+  state.sinceDate = val;
+  renderDays();
+  dateModal.classList.remove('show');
+  if (socket && socket.connected) {
+    socket.emit('setSince', { date: val });
+  } else {
+    offlinePending.since = val; // 离线:等联网后补同步
+    savePending();
+  }
+  offSave();
+  // 小提示:告诉用户已保存
+  const d = document.getElementById('dateText');
+  d.textContent = getToday() + ' · 💐';
+  setTimeout(() => { d.textContent = getToday(); }, 1500);
+});
+
+// 想念等级表情 & 文案
+function levelOf(v) {
+  if (v === 0)   return ['😶', '还没怎么想 TA 呢'];
+  if (v < 20)    return ['😌', '有一点点想'];
+  if (v < 40)    return ['🙂', '想的，但还能忍'];
+  if (v < 60)    return ['🥰', '一直惦记着 TA'];
+  if (v < 80)    return ['😍', '满脑子都是 TA'];
+  if (v < 100)   return ['🤩', '疯狂想，坐不住那种'];
+  return ['💖', '想 TA 想得快炸了！'];
+}
+
+function renderMiss() {
+  const v = Number(slider.value);
+  const [emoji, tag] = levelOf(v);
+  bigEmoji.textContent = emoji;
+  missValue.innerHTML = v + '<small>%</small>';
+  rangeVal.textContent = '想念值 ' + v + ' / 100';
+  tagline.textContent = tag;
+  // 滑块进度条配色
+  slider.style.background =
+    'linear-gradient(90deg, #ffb3c6 ' + v + '%, #ffe3ea ' + v + '%)';
+}
+
+slider.addEventListener('input', renderMiss);
+
+// ================= 提交 =================
+submitBtn.addEventListener('click', () => {
+  if (!state.enabled) return;
+  const v = Number(slider.value);
+  state.miss = v;
+  state.enabled = false;
+  submitBtn.textContent = '今天已经告诉 TA 了 💌';
+  submitBtn.classList.add('submitted');
+  burstHearts(v);
+  showModal(v);
+  // 写进本地日历数据
+  const k = frontTodayKey();
+  if (!state.misses[k]) state.misses[k] = {};
+  state.misses[k][state.myName] = v;
+  renderCalendar();
+  // 实时同步给 TA（TA 那边立刻看到进度条涨起来）；离线则存本地待同步
+  if (socket && socket.connected) {
+    socket.emit('miss', { value: v });
+  } else {
+    if (!offlinePending.misses[k]) offlinePending.misses[k] = {};
+    offlinePending.misses[k][state.myName] = v;
+    savePending();
+  }
+  offSave();
+});
+
+function burstHearts(v) {
+  const count = Math.min(30, 5 + Math.floor(v / 4));
+  const burst = document.getElementById('burst');
+  burst.innerHTML = '';
+  const emojis = ['❤️','💖','💗','💕','💘','🥰'];
+  for (let i=0;i<count;i++) {
+    const h = document.createElement('i');
+    h.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+    h.style.left = (20 + Math.random()*60) + 'vw';
+    h.style.top = (30 + Math.random()*50) + 'vh';
+    h.style.fontSize = (18 + Math.random()*26) + 'px';
+    h.style.animationDelay = (Math.random()*0.3) + 's';
+    burst.appendChild(h);
+  }
+  setTimeout(()=>{ burst.innerHTML=''; }, 1200);
+}
+
+function showModal(v) {
+  const [emoji, tag] = levelOf(v);
+  document.getElementById('mEmoji').textContent = emoji;
+  document.getElementById('mTitle').textContent = v >= 80 ? 'TA 会高兴坏的！💘' : '已告诉 TA';
+  document.getElementById('mText').textContent =
+    '你今天想念 TA 的程度是 ' + v + '% —— ' + tag;
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('show');
+}
+
+// ================= 渲染对方 =================
+function renderPartner() {
+  const boundOk = state.bound;
+  bindBox.style.display = boundOk ? 'none' : 'block';
+  applyAvatar(document.getElementById('pAvatar'), state.partnerName, state.partnerAvatar);
+  document.getElementById('pName').textContent = state.partnerName + ' 今天';
+  if (!boundOk || state.partnerMiss === null) {
+    pBar.style.width = '0%';
+    pVal.textContent = '--';
+    return;
+  }
+  pBar.style.width = state.partnerMiss + '%';
+  pVal.textContent = state.partnerMiss + '%';
+}
+
+// ================= 实时在线 & 双人同步 =================
+let socket = null;
+
+function renderOnline() {
+  const dot = document.getElementById('pDot');
+  const st = document.getElementById('pStatus');
+  if (!socket || !socket.connected) {
+    dot.textContent = '⚪';
+    st.textContent = '未连接服务器（离线模式，内容存本机）';
+    showBanner();
+    return;
+  }
+  if (!state.code && !state.bound) {
+    dot.textContent = '⚪';
+    st.textContent = '还未绑定，生成邀请码发给 TA 吧';
+    return;
+  }
+  if (state.code && !state.bound) {
+    dot.textContent = '⏳';
+    st.textContent = '邀请码已生成，等待 TA 加入';
+    return;
+  }
+  if (state.partnerOnline) {
+    dot.textContent = '🟢';
+    st.textContent = '在线 · TA 正看着这里';
+  } else {
+    dot.textContent = '⚪';
+    st.textContent = '离线 · 等 TA 上线';
+  }
+}
+
+function showPairModal(name) {
+  document.getElementById('mEmoji').textContent = '💞';
+  document.getElementById('mTitle').textContent = name + ' 加入了';
+  document.getElementById('mText').textContent = '你们绑定啦，现在能互相看到想念和留言了';
+  document.getElementById('modal').classList.add('show');
+}
+
+function initSocket() {
+  if (!window.io) return; // 用 file:// 打开时无实时功能，仅静态演示
+  socket = io();
+  socket.on('connect', () => {
+    online = true;
+    hideBanner();
+    // 自动找回房间：这个设备来过就直接回到原房间（默认一直进）
+    socket.emit('autoRejoin', { clientId: CLIENT_ID, name: state.myName });
+    renderOnline();
+  });
+  socket.on('disconnect', () => {
+    online = false;
+    showBanner();
+    renderOnline();
+  });
+  socket.on('connect_error', () => {
+    online = false;
+    showBanner();
+    renderOnline();
+  });
+  socket.on('noMapping', () => {
+    // 新设备：显示创建/加入 UI；?auto=1 则自动建房间（演示/分享链接用）
+    if (new URLSearchParams(location.search).get('auto') === '1') {
+      socket.emit('create', { clientId: CLIENT_ID, name: state.myName });
+    } else {
+      renderOnline();
+    }
+  });
+
+  // ===== 邀请码绑定 =====
+  createBtn.addEventListener('click', () => {
+    if (state.code) return;
+    if (!socket || !socket.connected) { bindErr.textContent = '服务器没连上，稍等重试'; return; }
+    bindErr.textContent = '';
+    createBtn.textContent = '生成中…';
+    socket.emit('create', { clientId: CLIENT_ID, name: state.myName });
+  });
+
+  joinBtn.addEventListener('click', () => {
+    const code = codeInput.value.trim();
+    if (!code) { bindErr.textContent = '先输入 6 位邀请码'; return; }
+    if (state.code) return;
+    if (!socket || !socket.connected) { bindErr.textContent = '服务器没连上，稍等重试'; return; }
+    bindErr.textContent = '';
+    socket.emit('joinRoom', { clientId: CLIENT_ID, code: code, name: state.myName });
+  });
+  codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinBtn.click(); });
+
+  socket.on('created', ({ code }) => {
+    state.code = code;
+    createBtn.style.display = 'none';
+    joinBtn.style.display = 'none';
+    codeInput.style.display = 'none';
+    codeDisplay.style.display = 'block';
+    myCodeEl.textContent = code;
+    waitingText.textContent = '⏳ 等待 TA 输入这个码加入…';
+    bindErr.textContent = '';
+    editDateBtn.style.display = 'inline-block'; // 房间已建好，可以先把纪念日设上
+    renderDays();
+    renderOnline();
+    offSave();
+    // ?since=YYYY-MM-DD 自动设置纪念日（演示/分享链接用）
+    const su = new URLSearchParams(location.search).get('since');
+    if (su && /^\d{4}-\d{2}-\d{2}$/.test(su) && !state.sinceDate) {
+      socket.emit('setSince', { date: su });
+    }
+  });
+
+  // 进入房间（加入 / 自动回归）：恢复绑定、想念、留言历史、纪念日、头像
+  socket.on('joined', ({ code, peers, state: rs, rejoin, profiles }) => {
+    state.code = code;
+    const others = (peers || []).filter(n => n !== state.myName);
+    if (others.length) {
+      state.partnerName = others[0];
+      state.bound = true;
+    }
+
+    // 恢复彼此头像
+    if (profiles) {
+      if (profiles[state.myName] !== undefined) state.myAvatar = profiles[state.myName] || '';
+      if (others.length) state.partnerAvatar = profiles[others[0]] || '';
+    }
+    applyAvatar(document.getElementById('myAvatar'), state.myName, state.myAvatar);
+
+    if (rs) {
+      // 恢复全部想念历史(日历用)
+      state.misses = rs.misses || {};
+      // 恢复纪念日(在一起天数)
+      if (rs.sinceDate) state.sinceDate = rs.sinceDate;
+      // 恢复留言历史
+      state.leaves = (rs.leaves || []).map(l => ({
+        from: l.from === state.myName ? 'me' : 'ta',
+        text: l.text,
+        time: l.time || '',
+        ts: l.ts || 0
+      }));
+      // 恢复今天已提交的想念（防止重复提交）
+      const k = frontTodayKey();
+      const today = (rs.misses || {})[k] || {};
+      const myVal = today[state.myName];
+      if (myVal !== undefined && myVal !== null) {
+        state.miss = myVal;
+        state.enabled = false;
+        slider.value = myVal;
+        submitBtn.textContent = '今天已经告诉 TA 了 💌';
+        submitBtn.classList.add('submitted');
+      }
+      // 恢复对方今天的想念
+      if (others.length) {
+        const pv = today[others[0]];
+        if (pv !== undefined && pv !== null) state.partnerMiss = pv;
+      }
+    }
+
+    // 已绑定 → 隐藏创建/加入操作区
+    if (state.bound) {
+      createBtn.style.display = 'none';
+      joinBtn.style.display = 'none';
+      codeInput.style.display = 'none';
+      codeDisplay.style.display = 'none';
+    }
+    if (rejoin) {
+      waitingText.textContent = '↩️ 欢迎回来，这是你们的房间';
+    }
+    editDateBtn.style.display = 'inline-block'; // 进房间后可以设置纪念日
+    renderDays();
+    renderMiss();
+    renderPartner();
+    renderLeaves();
+    renderCalendar();
+    renderOnline();
+    if (rejoin) {
+      // 回到原房间：把离线期间写的内容补推给服务器
+      flushPending();
+    }
+    offSave(); // 以服务器数据为准刷新本地缓存
+  });
+
+  // 任一方设置纪念日 → 两端实时更新
+  socket.on('since', ({ date }) => {
+    state.sinceDate = date;
+    renderDays();
+    offSave();
+  });
+
+  // 任一方改名/换头像 → 两端实时更新(服务器确认为准)
+  socket.on('profile', (d) => {
+    profileSaveBtn.disabled = false;
+    profileSaveBtn.textContent = '保存 ✨';
+    profileModal.classList.remove('show');
+    if (d.oldName === state.myName) {
+      state.myName = d.name;
+      state.myAvatar = d.avatar || '';
+      applyAvatar(document.getElementById('myAvatar'), d.name, state.myAvatar);
+    } else if (d.oldName === state.partnerName || d.name === state.partnerName) {
+      state.partnerName = d.name;
+      state.partnerAvatar = d.avatar || '';
+      renderPartner();
+    }
+    // 历史想念里的旧名 → 新名(与服务器一致，日历跟着人走)
+    Object.keys(state.misses || {}).forEach(dk => {
+      const day = state.misses[dk];
+      if (day[d.oldName] !== undefined) { day[d.name] = day[d.oldName]; delete day[d.oldName]; }
+    });
+    renderCalendar();
+    offSave();
+  });
+  socket.on('profileErr', ({ message }) => {
+    // 拒绝(如重名):弹窗保持打开，直接显示原因
+    profileSaveBtn.disabled = false;
+    profileSaveBtn.textContent = '保存 ✨';
+    profileErr.textContent = message;
+  });
+
+  socket.on('joinError', ({ message }) => {
+    createBtn.textContent = '🔑 生成邀请码';
+    bindErr.textContent = message;
+  });
+
+  socket.on('partnerJoined', ({ name }) => {
+    state.partnerName = name;
+    state.bound = true;
+    waitingText.textContent = '🎉 ' + name + ' 加入了！';
+    renderPartner();
+    renderOnline();
+    showPairModal(name);
+  });
+
+  // 房间在线名单（每次有人上/下线都会推送）
+  socket.on('peers', ({ peers, profiles }) => {
+    const others = (peers || []).filter(n => n !== state.myName);
+    state.partnerOnline = others.length > 0;
+    if (others.length) {
+      state.partnerName = others[0];
+      state.bound = true;
+    }
+    // 头像映射跟随在线名单一起同步
+    if (profiles) {
+      if (profiles[state.myName] !== undefined) state.myAvatar = profiles[state.myName] || '';
+      if (others.length) state.partnerAvatar = profiles[others[0]] || '';
+      applyAvatar(document.getElementById('myAvatar'), state.myName, state.myAvatar);
+    }
+    renderPartner();
+    renderOnline();
+    offSave();
+  });
+
+  // 对方提交想念 → 实时更新（同时写进日历数据）
+  socket.on('miss', (d) => {
+    if (d && d.from !== state.myName) {
+      state.partnerMiss = d.value;
+      const k = frontTodayKey();
+      if (!state.misses[k]) state.misses[k] = {};
+      state.misses[k][d.from] = d.value;
+      renderPartner();
+      renderCalendar();
+      offSave();
+    }
+  });
+
+  // 对方留言 → 实时追加
+  socket.on('leave', (d) => {
+    if (d && d.from !== state.myName) {
+      state.leaves.push({ from: 'ta', text: d.text, time: d.time || '刚刚' });
+      renderLeaves();
+      offSave();
+    }
+  });
+}
+
+// ================= 想念日历 =================
+let calOffset = 0; // 0 = 本月, -1 = 上个月
+
+function renderCalendar() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + calOffset;
+  const first = new Date(y, m, 1);
+  const lead = (first.getDay() + 6) % 7; // 周一起始
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const p = n => String(n).padStart(2, '0');
+  document.getElementById('calMonth').textContent = y + '年' + (m + 1) + '月';
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < lead; i++) {
+    const c = document.createElement('div');
+    c.className = 'cal-cell cal-empty';
+    grid.appendChild(c);
+  }
+  const todayKey = frontTodayKey();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = y + '-' + p(m + 1) + '-' + p(d);
+    const day = (state.misses || {})[key];
+    const mine = day ? day[state.myName] : undefined;
+    const ta = day ? day[state.partnerName] : undefined;
+
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell' + (key === todayKey ? ' today' : '') + (mine !== undefined || ta !== undefined ? ' has' : '');
+    const tip = key
+      + (mine !== undefined ? ' 我=' + mine : '')
+      + (ta !== undefined ? ' TA=' + ta : '');
+    cell.title = tip;
+    if (mine !== undefined || ta !== undefined) {
+      cell.classList.add(mine !== undefined && ta !== undefined ? ' both' : 'one');
+    }
+
+    const num = document.createElement('div');
+    num.className = 'cal-num';
+    num.textContent = d;
+    cell.appendChild(num);
+
+    if (mine !== undefined || ta !== undefined) {
+      const bars = document.createElement('div');
+      bars.className = 'cal-bars';
+      const b1 = document.createElement('i');
+      b1.className = 'b-me';
+      b1.style.width = (mine !== undefined ? mine : 0) + '%';
+      const b2 = document.createElement('i');
+      b2.className = 'b-ta';
+      b2.style.width = (ta !== undefined ? ta : 0) + '%';
+      bars.appendChild(b1);
+      bars.appendChild(b2);
+      cell.appendChild(bars);
+    }
+    grid.appendChild(cell);
+  }
+}
+
+document.getElementById('calPrev').addEventListener('click', () => { calOffset--; renderCalendar(); });
+document.getElementById('calNext').addEventListener('click', () => { calOffset++; renderCalendar(); });
+
+// ================= 纪念日里程碑 & 庆祝 =================
+const MILESTONES = [7, 30, 50, 100, 200, 365, 520, 666, 730, 999, 1000];
+
+function renderMilestone() {
+  const el = document.getElementById('milestone');
+  if (!state.sinceDate) { el.style.display = 'none'; return; }
+  const days = calcDays(state.sinceDate);
+  if (MILESTONES.includes(days)) {
+    // 今天正好是里程碑日 → 庆祝横幅 + 全屏撒花
+    el.style.display = 'block';
+    el.innerHTML = '🎉 今天是在一起第 <b>' + days + '</b> 天！纪念日快乐！';
+    celebrate();
+    return;
+  }
+  const next = MILESTONES.find(x => x > days);
+  if (next) {
+    const left = next - days;
+    el.style.display = 'block';
+    el.innerHTML = left === 1
+      ? '🎈 明天就是在一起第 <b>' + next + '</b> 天啦！'
+      : '✨ 距离 <b>' + next + '</b> 天纪念日还有 <b>' + left + '</b> 天';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function celebrate() {
+  const burst = document.getElementById('burst');
+  const emojis = ['❤️','💖','💗','💐','🎉','🥰','💘','✨'];
+  for (let i = 0; i < 36; i++) {
+    const h = document.createElement('i');
+    h.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    h.className = 'falling';
+    h.style.left = (Math.random() * 100) + 'vw';
+    h.style.fontSize = (18 + Math.random() * 26) + 'px';
+    h.style.animationDelay = (Math.random() * 0.8) + 's';
+    burst.appendChild(h);
+  }
+  setTimeout(() => { burst.innerHTML = ''; }, 3200);
+}
+
+// ================= 留言墙 =================
+const leaveInput = document.getElementById('leaveInput');
+const leaveBtn = document.getElementById('leaveBtn');
+const leaveList = document.getElementById('leaveList');
+
+function nowTime() {
+  const d = new Date();
+  const p = n => (n < 10 ? '0' + n : '' + n);
+  return p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function renderLeaves() {
+  leaveList.innerHTML = '';
+  if (!state.leaves.length) {
+    const empty = document.createElement('div');
+    empty.className = 'leave-empty';
+    empty.innerHTML = '<span>💌</span>还没有留言，写一句给 TA 吧';
+    leaveList.appendChild(empty);
+    return;
+  }
+  state.leaves.forEach(l => {
+    const row = document.createElement('div');
+    row.className = 'leave-msg ' + (l.from === 'me' ? 'me' : 'ta');
+
+    const avatar = document.createElement('div');
+    avatar.className = 'mini-avatar';
+    applyAvatar(avatar,
+      l.from === 'me' ? state.myName : state.partnerName,
+      l.from === 'me' ? state.myAvatar : state.partnerAvatar);
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = l.text;
+    const t = document.createElement('span');
+    t.className = 't';
+    t.textContent = l.time + (l.from === 'me' ? ' · 我' : ' · TA');
+    bubble.appendChild(t);
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    leaveList.appendChild(row);
+  });
+  // 滚动到底部
+  leaveList.scrollTop = leaveList.scrollHeight;
+}
+
+function addLeave() {
+  const text = leaveInput.value.trim();
+  if (!text) {
+    leaveInput.focus();
+    return;
+  }
+  const t = nowTime();
+  const ts = Date.now(); // 客户端时间戳：离线重放去重用
+  state.leaves.push({ from: 'me', text: text, time: t, ts: ts });
+  leaveInput.value = '';
+  renderLeaves();
+  // 实时同步给 TA；离线则存本地待同步
+  if (socket && socket.connected) {
+    socket.emit('leave', { text: text, time: t, ts: ts });
+  } else {
+    offlinePending.leaves.push({ text: text, time: t, ts: ts });
+    savePending();
+  }
+  offSave();
+}
+
+leaveBtn.addEventListener('click', addLeave);
+leaveInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    addLeave();
+  }
+});
+
+// ================= 初始化 =================
+function getToday() {
+  const d = new Date();
+  const w = ['日','一','二','三','四','五','六'][d.getDay()];
+  return d.getMonth()+1 + '月' + d.getDate() + '日 · 周' + w;
+}
+
+// 启动时若有本地缓存且绑定过房间 → 先离线呈现（断网也能看/能用），联网后以服务器为准刷新
+function applyOfflineCache() {
+  const c = offLoad();
+  if (!c || !c.code) return false;
+  // URL 没传身份时恢复自己的名字（传了 ?u= 以 URL 为准，用于双窗口演示）
+  const urlU = new URLSearchParams(location.search).get('u');
+  if (!urlU) state.myName = c.myName || state.myName;
+  state.code = c.code;
+  state.bound = !!c.bound;
+  state.partnerName = c.partnerName || 'TA';
+  state.myAvatar = c.myAvatar || '';
+  state.partnerAvatar = c.partnerAvatar || '';
+  state.sinceDate = c.sinceDate || null;
+  state.misses = c.misses || {};
+  state.leaves = c.leaves || [];
+  state.miss = c.miss || 0;
+  state.partnerMiss = (c.partnerMiss === undefined || c.partnerMiss === null) ? null : c.partnerMiss;
+  applyAvatar(document.getElementById('myAvatar'), state.myName, state.myAvatar);
+  // 离线恢复房间 UI：绑定区隐藏，房间码显示（未满员时展示等待状态）
+  if (state.code) {
+    myCodeEl.textContent = state.code;
+    createBtn.style.display = 'none';
+    joinBtn.style.display = 'none';
+    codeInput.style.display = 'none';
+    if (state.bound) {
+      codeDisplay.style.display = 'none';
+    } else {
+      codeDisplay.style.display = 'block';
+      waitingText.textContent = '⏳ 等待 TA 输入这个码加入…';
+    }
+  }
+  // 今天是否已提交过
+  const k = frontTodayKey();
+  const myVal = (state.misses[k] || {})[state.myName];
+  if (myVal !== undefined && myVal !== null) {
+    state.miss = myVal;
+    state.enabled = false;
+    slider.value = myVal;
+    submitBtn.textContent = '今天已经告诉 TA 了 💌';
+    submitBtn.classList.add('submitted');
+  } else {
+    state.enabled = true;
+  }
+  renderDays();
+  renderMiss();
+  renderPartner();
+  renderLeaves();
+  renderCalendar();
+  showBanner(); // 先按离线呈现，连上服务器后自动隐藏
+  return true;
+}
+
+function init() {
+  document.getElementById('dateText').textContent = getToday();
+  renderDays(); // 真实天数:等 joined/created 带上 sinceDate(没设置前显示 --)
+
+  document.title = '想你 · ' + getToday();
+
+  // 身份：?u=名字（双人演示时两个窗口分别传不同的名字）
+  const url = new URLSearchParams(location.search);
+  const myU = url.get('u');
+  if (myU) {
+    state.myName = myU;
+    applyAvatar(document.getElementById('myAvatar'), myU, '');
+  }
+  document.title = '想你 · ' + getToday() + ' · ' + state.myName;
+
+  // 支持 ?bound=1 模拟已绑定（静态演示模式）
+  if (url.get('bound') === '1') {
+    state.bound = true;
+    state.partnerName = url.get('name') || '宝贝';
+    state.partnerMiss = url.get('pmiss') !== null ? Number(url.get('pmiss')) : null;
+    document.getElementById('pName').textContent = state.partnerName + ' 今天';
+    applyAvatar(document.getElementById('pAvatar'), state.partnerName, '');
+    renderPartner();
+    // 演示：预填 TA 的一条留言
+    state.leaves.push({ from: 'ta', text: '刚睡醒第一件事就是想你 🥰', time: '09:12' });
+  }
+  renderLeaves();
+  renderCalendar();
+
+  // 背景漂浮爱心
+  const bg = document.getElementById('bgHearts');
+  for (let i=0;i<14;i++) {
+    const s = document.createElement('span');
+    s.textContent = ['❤','💖','💕','💗','🌸','✨'][Math.floor(Math.random()*6)];
+    s.style.left = Math.random()*100 + 'vw';
+    s.style.fontSize = (14+Math.random()*18) + 'px';
+    s.style.animationDuration = (8+Math.random()*10) + 's';
+    s.style.animationDelay = (Math.random()*8) + 's';
+    bg.appendChild(s);
+  }
+
+  renderMiss();
+
+  // 离线缓存：先加载待同步队列，再按本地缓存呈现（无缓存时保持可提交）
+  loadPending();
+  const hasOfflineRoom = applyOfflineCache();
+  if (!hasOfflineRoom) {
+    state.enabled = true;
+    renderMiss();
+  }
+
+  initSocket(); // 连接实时服务器（如果存在）
+  if (!window.io) renderOnline(); // file:// 打开:显示离线提示
+
+  // Service Worker：缓存核心资源，断网/服务器不在也能打开页面
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+
+  // 手机版提示：显示局域网访问地址（IP 变了也能找到）
+  fetch('/ip').then(r => r.json()).then(d => {
+    document.getElementById('phoneUrl').textContent = d.url + '/?u=' + encodeURIComponent(state.myName);
+    document.getElementById('phoneHint').style.display = 'block';
+  }).catch(() => {});
+}
+
+init();
+</script>
+<div id="phoneHint" class="phone-hint" style="display:none">📱 手机版：手机用 Chrome 打开 <b id="phoneUrl"></b> 就能用啦（菜单「添加到主屏幕」就有图标）</div>
+</body>
+</html>
